@@ -41,6 +41,7 @@ public class BrokerLoad {
   private final RawMetricsHolder _brokerMetrics;
   private final Map<String, RawMetricsHolder> _dotHandledTopicMetrics;
   private final Map<TopicPartition, RawMetricsHolder> _dotHandledPartitionMetrics;
+  private final Map<String, RawMetricsHolder> _dotHandledPartitionMetricsEnhanced;
   // Remember which topic has partition size reported. Because the topic level IO metrics are only created when
   // there is IO, the topic level IO metrics may be missing if there was no traffic to the topic on the broker.
   // However, because the partition size will always be reported, when we see partition size was reported for
@@ -55,6 +56,7 @@ public class BrokerLoad {
     _brokerMetrics = new RawMetricsHolder();
     _dotHandledTopicMetrics = new HashMap<>();
     _dotHandledPartitionMetrics = new HashMap<>();
+    _dotHandledPartitionMetricsEnhanced = new HashMap<>();
   }
 
   /**
@@ -77,6 +79,9 @@ public class BrokerLoad {
         PartitionMetric pm = (PartitionMetric) ccm;
         _dotHandledPartitionMetrics.computeIfAbsent(new TopicPartition(pm.topic(), pm.partition()), tp -> new RawMetricsHolder())
                                    .recordCruiseControlMetric(ccm);
+        //Avoid issue with get new TopicPartition("__amazon_msk_canary", pm.partition()) in the hashmap
+        _dotHandledPartitionMetricsEnhanced.computeIfAbsent(pm.topic(), tp -> new RawMetricsHolder())
+                                    .recordCruiseControlMetric(ccm);        
         _dotHandledTopicsWithPartitionSizeReported.add(pm.topic());
         break;
       default:
@@ -166,6 +171,9 @@ public class BrokerLoad {
   public Double partitionMetric(String dotHandledTopic, int partition, RawMetricType rawMetricType) {
     sanityCheckMetricScope(rawMetricType, PARTITION);
     RawMetricsHolder metricsHolder = _dotHandledPartitionMetrics.get(new TopicPartition(dotHandledTopic, partition));
+    if (metricsHolder == null || metricsHolder.metricValue(rawMetricType) == null) {
+      metricsHolder = _dotHandledPartitionMetricsEnhanced.get(dotHandledTopic);
+    }    
     if (metricsHolder == null || metricsHolder.metricValue(rawMetricType) == null) {
       LOG.error("Partition metric {} does not exist for dot handled topic {} and partition {}.",
                 rawMetricType, dotHandledTopic, partition);
